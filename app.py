@@ -165,5 +165,15 @@ def show_dashboard():
  
                 with cc2:
                                     st.markdown("TP<br><span class=\"tp\">" + format(tp, ",.5f") + "</span><br>" + format(p_tp, ".0f") + " pips to TP", unsafe_allow_html=True)
- 
+if "page" not in st.session_state:
+ st.session_state.page = "Dashboard"
+if "started" not in st.session_state:
+ st.session_state.started = True
+
+if st.session_state.page == "Calendar":
+    show_calendar()
+else:
+   show_dashboard()
+
+
  
