@@ -149,4 +149,3 @@ for sym, ticker in SYMBOLS.items():
  
 st.caption(f"Last updated: {datetime.now().strftime('%H:%M:%S')} SAST - Auto-refreshes every 5 min - This robot NEVER places trades")
 st.button("Refresh Now")
-has context menu
