@@ -161,7 +161,9 @@ def show_dashboard():
                 st.markdown(f'<span class="entry">Entry: {entry:,.5f}</span>', unsafe_allow_html=True)
                 cc1, cc2 = st.columns(2)
                 with cc1:
-                    st.markdown(f'SL<br><span class="sl">{sl:,.5f}</span><br>{p_sl:.0f} pips to SL', unsafe_allow_html=True)
+                                    st.markdown("SL<br><span class=\"sl\">" + format(sl, ",.5f") + "</span><br>" + format(p_sl, ".0f") + " pips to SL", unsafe_allow_html=True)
+ 
                 with cc2:
-                    st.markdown(f'TP<br><span class="tp">{tp:,.5f
+                                    st.markdown("TP<br><span class=\"tp\">" + format(tp, ",.5f") + "</span><br>" + format(p_tp, ".0f") + " pips to TP", unsafe_allow_html=True)
+ 
  
