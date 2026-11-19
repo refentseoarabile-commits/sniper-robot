@@ -47,7 +47,20 @@ SYMBOLS = {
     "USDCHF": "USDCHF=X",
     "EURGBP": "EURGBP=X",
     "GBPJPY": "GBPJPY=X",
+    "EURJPY": "EURJPY=X",
+    "GBPCHF": "GBPCHF=X",
+    "NZDUSD": "NZDUSD=X",
+    "AUDJPY": "AUDJPY=X",
+    "EURCHF": "EURCHF=X",
+    "EURAUD": "EURAUD=X",
+    "GBPAUD": "GBPAUD=X",
+    "USDMXN": "USDMXN=X",
+    "USDZAR": "USDZAR=X",
+    "XAUUSD": "GC=F",
+    "XAGUSD": "SI=F",
+    "BTCUSD": "BTC-USD",
 }
+ 
  
 def get_pip_size(symbol):
     # JPY pairs use 0.01, others use 0.0001
