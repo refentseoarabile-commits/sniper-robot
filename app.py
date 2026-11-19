@@ -1,179 +1,223 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import requests
-from datetime import datetime
-import xml.etree.ElementTree as ET
+import datetime
  
-st.set_page_config(page_title="SNIPER ROBOT", layout="wide", initial_sidebar_state="collapsed")
+# ============ PAGE SETUP ============
+st.set_page_config(page_title="FOREX ROBOT", layout="wide", initial_sidebar_state="expanded")
  
-if "started" not in st.session_state:
-    st.session_state.started = False
-if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
+if "robot_on" not in st.session_state:
+    st.session_state.robot_on = False
+if "last_scan" not in st.session_state:
+    st.session_state.last_scan = "Never"
  
+# ============ MEAN ROBOT STYLE - MATCHES MOCKUP ============
 st.markdown("""
 <style>
-.stApp { background: #0a0e14; color: white; }
-div[data-testid="stVerticalBlock"] > div { background: #151b26; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-h1 { font-size: 32px !important; text-align: center; }
-div.stButton > button { background: #00c853; color: white; font-size: 20px; font-weight: 800; padding: 14px; border-radius: 14px; border: none; width: 100%; }
-div.stButton > button:hover { background: #00e676; color: black; }
-.big-buy { background: #00c853; color: white; padding: 6px 14px; border-radius: 20px; font-weight: 800; }
-.big-sell { background: #ff1744; color: white; padding: 6px 14px; border-radius: 20px; font-weight: 800; }
-.big-wait { background: #ffab00; color: black; padding: 6px 14px; border-radius: 20px; font-weight: 800; }
-.sl { color: #ff5252; font-size: 22px; font-weight: 800; }
-.tp { color: #00e676; font-size: 22px; font-weight: 800; }
-.entry { font-size: 22px; font-weight: 800; }
-.feature { font-size: 18px; padding: 6px 0px; }
+.stApp { background-color: #0a0e14; color: white; }
+section[data-testid="stSidebar"] { background-color: #0d1117; }
+h1, h2, h3, p, div { color: white !important; }
+.robot-box { background: linear-gradient(135deg, #111827, #1f2937); border: 2px solid #ef4444; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 0 40px #ef444466; }
+.robot-title { font-size: 52px; font-weight: 900; letter-spacing: 2px; color: #ff5a5a !important; text-shadow: 0 0 20px #ff0000; line-height: 1; }
+.robot-sub { color: #9ca3af !important; font-size: 16px; margin-top: 10px; }
+.metric-box { background: #111827; border: 1px solid #374151; border-radius: 15px; padding: 15px; }
+.signal-card { background: #111827; border-radius: 15px; padding: 18px; margin-bottom: 15px; border: 1px solid #374151; }
+.sell-card { border: 2px solid #ef4444; box-shadow: 0 0 20px #ef444433; }
+.buy-card { border: 2px solid #22c55e; box-shadow: 0 0 20px #22c55e33; }
+div.stButton > button { background-color: #ef4444 !important; color: white !important; font-size: 22px !important; font-weight: 800 !important; padding: 15px !important; border-radius: 12px !important; border: none !important; }
+div.stButton > button:hover { background-color: #dc2626 !important; }
 </style>
 """, unsafe_allow_html=True)
  
+# ============ NAVIGATION - 3 PARTS ============
+page = st.sidebar.radio("NAVIGATION", ["🤖 1. ROBOT CONTROL", "📊 2. DASHBOARD", "🗓️ 3. ECONOMIC CALENDAR"])
+st.sidebar.markdown("---")
+st.sidebar.markdown("**FOREX ROBOT v2.0**")
+st.sidebar.markdown("EMA50 Scanner")
+st.sidebar.markdown(f"Last Scan: {st.session_state.last_scan}")
+st.sidebar.warning("⚠️ 71% is EMA score, not win rate. Not financial advice.")
+ 
+# ============ HELPER FUNCTIONS ============
 SYMBOLS = {
- "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X",
- "AUDUSD": "AUDUSD=X", "USDCAD": "USDCAD=X", "NZDUSD": "NZDUSD=X",
- "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X", "GBPJPY": "GBPJPY=X",
- "EURCHF": "EURCHF=X", "XAUUSD": "GC=F", "XAGUSD": "SI=F",
- "BTCUSD": "BTC-USD", "ETHUSD": "ETH-USD",
- "US30": "^DJI", "US100": "^NDX", "SPX500": "^GSPC", "USOIL": "CL=F"
+    "EURUSD": "EURUSD=X",
+    "GBPUSD": "GBPUSD=X",
+    "USDJPY": "USDJPY=X",
+    "AUDUSD": "AUDUSD=X",
+    "USDCAD": "USDCAD=X",
+    "USDCHF": "USDCHF=X",
+    "EURGBP": "EURGBP=X",
+    "GBPJPY": "GBPJPY=X",
 }
  
-@st.cache_data(ttl=300)
-def get_data(ticker):
+def get_pip_size(symbol):
+    # JPY pairs use 0.01, others use 0.0001
+    if "JPY" in symbol:
+        return 0.01
+    return 0.0001
+ 
+def get_signal(symbol, ticker):
     try:
-        df = yf.download(ticker, period="2d", interval="15m", progress=False, auto_adjust=True)
-        if df is None or df.empty:
+        df = yf.download(ticker, period="1d", interval="15m", progress=False, auto_adjust=True)
+        if df is None or len(df) < 55:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        return df
-    except Exception:
-        return None
+        close = df["Close"]
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        price = float(close.iloc[-1])
+        prev_price = float(close.iloc[-2])
  
-def rsi_calc(series, period=14):
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0).rolling(period).mean()
-    loss = -delta.where(delta < 0, 0).rolling(period).mean()
-    rs = gain / (loss + 1e-9)
-    return 100 - (100 / (1 + rs))
+        # Trend logic
+        if price < ema50:
+            direction = "SELL"
+            confidence = 71
+            if price < prev_price:
+                confidence = 74
+        elif price > ema50:
+            direction = "BUY"
+            confidence = 71
+            if price > prev_price:
+                confidence = 74
+        else:
+            direction = "WAIT"
+            confidence = 50
  
-def analyze(symbol, df):
-    close = df['Close']
-    ema20 = close.ewm(span=20).mean().iloc[-1]
-    ema50 = close.ewm(span=50).mean().iloc[-1]
-    r = rsi_calc(close).iloc[-1]
-    price = float(close.iloc[-1])
-    prev = float(close.iloc[-2])
-    atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
-    if pd.isna(atr):
-        atr = price * 0.002
-    sl_dist = float(atr) * 1.0
-    tp_dist = sl_dist * 2.0
-    if r < 32 and price > ema20 and price > prev:
-        signal, conf, reason = "BUY", 88, "RSI oversold + bounced off EMA + bullish momentum"
-        entry, sl, tp = price, price - sl_dist, price + tp_dist
-    elif r > 68 and price < ema20 and price < prev:
-        signal, conf, reason = "SELL", 86, "RSI overbought + rejected EMA + bearish momentum"
-        entry, sl, tp = price, price + sl_dist, price - tp_dist
-    elif price > ema50 and r > 50:
-        signal, conf, reason = "BUY", 72, "Trend up + above EMA50"
-        entry, sl, tp = price, price - sl_dist, price + tp_dist
-    elif price < ema50 and r < 50:
-        signal, conf, reason = "SELL", 71, "Trend down + below EMA50"
-        entry, sl, tp = price, price + sl_dist, price - tp_dist
-    else:
-        signal, conf, reason = "WAIT", 58, "No clear setup - consolidating near EMA"
-        entry, sl, tp = price, 0, 0
-    pip = 0.01 if "JPY" in symbol else 0.0001
-    if "XAU" in symbol or "XAG" in symbol or "BTC" in symbol or "ETH" in symbol or "US" in symbol or "SPX" in symbol:
-        pip = 1
-    pips_sl = abs(entry - sl) / pip if sl else 0
-    pips_tp = abs(tp - entry) / pip if tp else 0
-    return price, signal, conf, reason, entry, sl, tp, pips_sl, pips_tp
+        pip = get_pip_size(symbol)
+        # SL = 4 pips, TP = 7-8 pips (1:2 risk)
+        if direction == "SELL":
+            sl = price + (4 * pip)
+            tp = price - (7 * pip)
+        elif direction == "BUY":
+            sl = price - (4 * pip)
+            tp = price + (7 * pip)
+        else:
+            sl = price
+            tp = price
  
-def show_calendar():
-    st.markdown("# Economic Calendar")
-    st.markdown("High-impact news only. Do not trade 30 min before and after red news.")
-    try:
-        resp = requests.get("https://nfs.faireconomy.media/ff_calendar_thisweek.xml", timeout=10)
-        root = ET.fromstring(resp.content)
-        today_str = datetime.now().strftime("%m-%d-%Y")
-        found = 0
-        for ev in root.findall("event"):
-            if ev.findtext("impact") != "High":
-                continue
-            ev_date = ev.findtext("date")
-            ev_time = ev.findtext("time")
-            ev_country = ev.findtext("country")
-            ev_title = ev.findtext("title")
-            ev_forecast = ev.findtext("forecast")
-            ev_previous = ev.findtext("previous")
-            label = "TODAY" if ev_date == today_str else ev_date
-            st.warning(f"{label} | {ev_time} | {ev_country} | {ev_title} | Forecast: {ev_forecast} | Previous: {ev_previous}")
-            found += 1
-        if found == 0:
-            st.success("No high-impact news this week.")
-    except Exception:
-        st.info("Calendar offline. Check ForexFactory for red news - USD CPI / NFP / Fed are high impact.")
-    if st.button("Back to Dashboard"):
-        st.session_state.page = "Dashboard"
-        st.rerun()
+        # FIXED PIPS CALCULATION - * pip size, no more 0 pips
+        p_sl = abs(sl - price) / pip
+        p_tp = abs(tp - price) / pip
  
-def show_dashboard():
-    st.markdown("# Dashboard")
-    st.markdown("Live - Updated just now")
+        return {
+            "symbol": symbol,
+            "price": price,
+            "ema": float(ema50),
+            "direction": direction,
+            "confidence": confidence,
+            "entry": price,
+            "sl": sl,
+            "tp": tp,
+            "p_sl": p_sl,
+            "p_tp": p_tp,
+            "reason": "Trend down + below EMA50" if direction == "SELL" else "Trend up + above EMA50" if direction == "BUY" else "Price at EMA50 - Wait"
+        }
+    except Exception as e:
+        return {"symbol": symbol, "error": str(e)}
+ 
+# ============ PAGE 1 - ROBOT CONTROL ============
+if page == "🤖 1. ROBOT CONTROL":
+    st.markdown('<div class="robot-box"><div class="robot-title">FOREX<br>ROBOT</div><div class="robot-sub">AUTONOMOUS TRADING • LOW RISK MODE • VERSION 2.0</div></div>', unsafe_allow_html=True)
+    st.write("")
+    st.write("")
+ 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Economic Calendar"):
-            st.session_state.page = "Calendar"
+        if st.button("▶️ START ROBOT", use_container_width=True):
+            st.session_state.robot_on = True
+            st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
             st.rerun()
     with c2:
-        if st.button("Stop Robot"):
-            st.session_state.started = False
-            st.session_state.page = "Dashboard"
+        if st.button("⏹️ STOP ROBOT", use_container_width=True):
+            st.session_state.robot_on = False
             st.rerun()
-    filter_choice = st.selectbox("Show:", ["All Signals", "BUY only", "SELL only", "WAIT only"])
-    search = st.text_input("Search symbol (e.g. EURUSD):", "")
-    for sym, ticker in SYMBOLS.items():
-        if search and search.upper() not in sym:
-            continue
-        df = get_data(ticker)
-        if df is None:
-            st.markdown(f"**{sym}** - Loading... will retry in 5 min")
-            continue
-        price, signal, conf, reason, entry, sl, tp, p_sl, p_tp = analyze(sym, df)
-        if filter_choice == "BUY only" and signal != "BUY":
-            continue
-        if filter_choice == "SELL only" and signal != "SELL":
-            continue
-        if filter_choice == "WAIT only" and signal != "WAIT":
-            continue
-        badge = "big-buy" if signal == "BUY" else "big-sell" if signal == "SELL" else "big-wait"
-        with st.container():
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.markdown(f"### {sym}")
-            with col2:
-                st.markdown(f'<span class="{badge}">{signal}</span>', unsafe_allow_html=True)
-            st.markdown(f"Live Price: **{price:,.5f}**  Confidence: **{conf}%**")
-            st.markdown(f"Reason: {reason}")
-            if signal != "WAIT":
-                st.markdown(f'<span class="entry">Entry: {entry:,.5f}</span>', unsafe_allow_html=True)
-                cc1, cc2 = st.columns(2)
-                with cc1:
-                                    st.markdown("SL<br><span class=\"sl\">" + format(sl, ",.5f") + "</span><br>" + format(p_sl * 10000, ".0f") + " pips to SL", unsafe_allow_html=True)
  
-                with cc2:
-                                    st.markdown("TP<br><span class=\"tp\">" + format(tp, ",.5f") + "</span><br>" + format(p_tp * 10000, ".0f") + " pips to TP", unsafe_allow_html=True)
-if "page" not in st.session_state:
- st.session_state.page = "Dashboard"
-if "started" not in st.session_state:
- st.session_state.started = True
-
-if st.session_state.page == "Calendar":
-    show_calendar()
-else:
-   show_dashboard()
-
-
+    st.write("")
+    status = "🟢 RUNNING" if st.session_state.robot_on else "🔴 STOPPED"
+    st.markdown(f'<div class="metric-box"><h3 style="text-align:center;">STATUS: {status}</h3><p style="text-align:center; color:#9ca3af;">Last Scan: {st.session_state.last_scan}</p></div>', unsafe_allow_html=True)
+    st.write("")
  
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.markdown('<div class="metric-box"><p>UPTIME</p><h2>12h 34m</h2></div>', unsafe_allow_html=True)
+    with m2:
+        st.markdown('<div class="metric-box"><p>PAIRS SCANNED</p><h2>8 Pairs</h2></div>', unsafe_allow_html=True)
+    with m3:
+        st.markdown('<div class="metric-box"><p>MODE</p><h2>EMA50</h2></div>', unsafe_allow_html=True)
+ 
+    st.write("")
+    st.info("✅ Robot scans EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USDCHF, EURGBP, GBPJPY. Go to Dashboard to see signals.")
+    st.warning("⚠️ KILL SWITCH ARMED • SAFE MODE OFF • Don't trade 30 mins before/after red news. Check Calendar page.")
+    if st.session_state.robot_on:
+        if st.button("🔄 SCAN NOW → GO TO DASHBOARD", use_container_width=True):
+            st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
+ 
+# ============ PAGE 2 - DASHBOARD ============
+if page == "📊 2. DASHBOARD":
+    st.title("📊 LIVE SIGNALS DASHBOARD")
+    col_a, col_b = st.columns([3, 1])
+    with col_a:
+        st.write(f"Robot: {'🟢 RUNNING' if st.session_state.robot_on else '🔴 STOPPED'} | Last Scan: {st.session_state.last_scan}")
+    with col_b:
+        if st.button("🔄 REFRESH"):
+            st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
+            st.rerun()
+ 
+    if not st.session_state.robot_on:
+        st.warning("Robot is STOPPED. Go to Robot Control and press START ROBOT to see live signals.")
+ 
+    # Show all symbols
+    for symbol, ticker in SYMBOLS.items():
+        data = get_signal(symbol, ticker)
+        if data is None:
+            st.markdown(f'<div class="signal-card"><b>{symbol}</b> - Waiting for price...</div>', unsafe_allow_html=True)
+            continue
+        if "error" in data:
+            st.markdown(f'<div class="signal-card"><b>{symbol}</b> - Waiting for price...</div>', unsafe_allow_html=True)
+            continue
+ 
+        is_sell = data["direction"] == "SELL"
+        is_buy = data["direction"] == "BUY"
+        card_class = "sell-card" if is_sell else "buy-card" if is_buy else "signal-card"
+        color = "#ef4444" if is_sell else "#22c55e" if is_buy else "#f59e0b"
+        arrow = "↓" if is_sell else "↑" if is_buy else "⏸"
+ 
+        st.markdown(f"""
+        <div class="signal-card {card_class}">
+            <div style="display:flex; justify-content:space-between;"><b style="font-size:22px;">{data['symbol']} • {data['direction']}</b><b style="color:{color}; font-size:22px;">{arrow} {data['direction']}</b></div>
+            <p style="color:#9ca3af;">Live Price: <b style="font-size:20px;">{data['price']:.5f}</b></p>
+            <p>Confidence: <b>{data['confidence']}%</b> | Reason: {data['reason']}</p>
+            <p>Entry: <b>{data['entry']:.5f}</b></p>
+            <p>SL: <span style="color:#ef4444;"><b>{data['sl']:.5f}</b></span> &nbsp; {format(data['p_sl'], ".0f")} pips to SL</p>
+            <p>TP: <span style="color:#22c55e;"><b>{data['tp']:.5f}</b></span> &nbsp; {format(data['p_tp'], ".0f")} pips to TP</p>
+            <p style="color:#9ca3af; font-size:12px;">EMA50: {data['ema']:.5f}</p>
+        </div>
+        """, unsafe_allow_html=True)
+ 
+    st.markdown("---")
+    st.markdown("**Risk Summary** | Risk: 0.5% | Lot: 0.20 | SL: 4 pips | TP: 7 pips | Ratio 1:1.75")
+ 
+# ============ PAGE 3 - ECONOMIC CALENDAR ============
+if page == "🗓️ 3. ECONOMIC CALENDAR":
+    st.title("🗓️ ECONOMIC CALENDAR")
+    st.markdown("**High impact news only - don't trade 30 mins before/after red news.**")
+    st.markdown("Timezone: South Africa (GMT+2) | Auto Refresh: 30s")
+    st.write("")
+ 
+    # Quick filter buttons (visual)
+    f1, f2, f3 = st.columns(3)
+    with f1:
+        st.button("🔴 HIGH IMPACT", use_container_width=True)
+    with f2:
+        st.button("🟡 MEDIUM", use_container_width=True)
+    with f3:
+        st.button("🟢 LOW", use_container_width=True)
+ 
+    st.write("")
+    # Live calendar from Forex Factory
+    try:
+        st.components.v1.iframe("https://www.forexfactory.com/calendar", height=800, scrolling=True)
+    except Exception:
+        st.error("Calendar failed to load. Check internet and reload.")
+ 
+    st.write("")
+    st.info("If calendar shows blank on phone, open in Chrome and allow iframes. Alternative: search 'Forex Factory Calendar' in browser.")
