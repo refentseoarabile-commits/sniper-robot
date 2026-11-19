@@ -3,7 +3,10 @@ import yfinance as yf
 import pandas as pd
 import datetime
  
-st.set_page_config(page_title="FOREX SNIPER", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="FOREX SNIPER",
+    layout="wide"
+)
  
 if "robot_on" not in st.session_state:
     st.session_state.robot_on = False
@@ -12,30 +15,71 @@ if "last_scan" not in st.session_state:
  
 st.markdown("""
 <style>
-.stApp { background-color: #0a0e14; color: white; }
-section[data-testid="stSidebar"] { background-color: #0d1117; }
+.stApp { background-color: #0a0e14; }
+section[data-testid="stSidebar"] {
+  background-color: #0d1117;
+}
 h1, h2, h3, p, div { color: white !important; }
-.robot-box { background: linear-gradient(135deg, #111827, #1f2937); border: 2px solid #ef4444; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 0 40px #ef444466; }
-.robot-title { font-size: 52px; font-weight: 900; letter-spacing: 2px; color: #ff5a5a !important; text-shadow: 0 0 20px #ff0000; line-height: 1; }
-.robot-sub { color: #9ca3af !important; font-size: 16px; margin-top: 10px; }
-.metric-box { background: #111827; border: 1px solid #374151; border-radius: 15px; padding: 15px; text-align: center; }
-.signal-card { background: #111827; border-radius: 15px; padding: 18px; margin-bottom: 15px; border: 1px solid #374151; }
-.sell-card { border: 2px solid #ef4444; box-shadow: 0 0 20px #ef444433; }
-.buy-card { border: 2px solid #22c55e; box-shadow: 0 0 20px #22c55e33; }
-div.stButton > button { background-color: #ef4444 !important; color: white !important; font-size: 22px !important; font-weight: 800 !important; padding: 15px !important; border-radius: 12px !important; border: none !important; }
-div.stButton > button:hover { background-color: #dc2626 !important; }
+.robot-box {
+  background: #111827;
+  border: 2px solid #ef4444;
+  border-radius: 20px;
+  padding: 30px;
+  text-align: center;
+}
+.robot-title {
+  font-size: 52px;
+  font-weight: 900;
+  color: #ff5a5a !important;
+  line-height: 1;
+}
+.robot-sub {
+  color: #9ca3af !important;
+  font-size: 16px;
+}
+.metric-box {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 15px;
+  padding: 15px;
+  text-align: center;
+}
+.signal-card {
+  background: #111827;
+  border-radius: 15px;
+  padding: 18px;
+  margin-bottom: 15px;
+  border: 1px solid #374151;
+}
+.sell-card { border: 2px solid #ef4444; }
+.buy-card { border: 2px solid #22c55e; }
+div.stButton > button {
+  background-color: #ef4444 !important;
+  color: white !important;
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  padding: 15px !important;
+  border-radius: 12px !important;
+}
 </style>
 """, unsafe_allow_html=True)
  
-# ===== NAVIGATION - YOUR 3 PARTS =====
-page = st.sidebar.radio("NAVIGATION", ["🎯 1. SNIPER CONTROL", "📊 2. DASHBOARD", "🗓️ 3. ECONOMIC CALENDAR"])
+# NAVIGATION - 3 PARTS
+page = st.sidebar.radio(
+    "NAVIGATION",
+    [
+        "1. SNIPER CONTROL",
+        "2. DASHBOARD",
+        "3. ECONOMIC CALENDAR"
+    ]
+)
 st.sidebar.markdown("---")
 st.sidebar.markdown("**FOREX SNIPER v2.0**")
 st.sidebar.markdown("EMA50 Scanner")
-st.sidebar.markdown(f"Last Scan: {st.session_state.last_scan}")
-st.sidebar.warning("⚠️ 71% is EMA score, not win rate. Not financial advice.")
+st.sidebar.markdown(f"Last: {st.session_state.last_scan}")
+st.sidebar.warning("71% is EMA score, not win rate.")
  
-# ===== SYMBOLS - ALL 20 =====
+# SYMBOLS - ALL 20
 SYMBOLS = {
     "EURUSD": "EURUSD=X",
     "GBPUSD": "GBPUSD=X",
@@ -72,29 +116,40 @@ def get_pip_size(symbol):
  
 def get_signal(symbol, ticker):
     try:
-        df = yf.download(ticker, period="1d", interval="15m", progress=False, auto_adjust=True)
+        df = yf.download(
+            ticker,
+            period="1d",
+            interval="15m",
+            progress=False,
+            auto_adjust=True
+        )
         if df is None or len(df) < 55:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         close = df["Close"]
-        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        ema50 = close.ewm(
+            span=50,
+            adjust=False
+        ).mean().iloc[-1]
         price = float(close.iloc[-1])
-        prev_price = float(close.iloc[-2])
+        prev = float(close.iloc[-2])
  
         if price < ema50:
             direction = "SELL"
-            confidence = 74 if price < prev_price else 71
+            conf = 74 if price < prev else 71
+            reason = "Down + below EMA50"
         elif price > ema50:
             direction = "BUY"
-            confidence = 74 if price > prev_price else 71
+            conf = 74 if price > prev else 71
+            reason = "Up + above EMA50"
         else:
             direction = "WAIT"
-            confidence = 50
+            conf = 50
+            reason = "At EMA50 - Wait"
  
         pip = get_pip_size(symbol)
  
-        # SL and TP for EVERY symbol - always calculated, never 0
         if direction == "SELL":
             sl = price + (4 * pip)
             tp = price - (7 * pip)
@@ -113,59 +168,141 @@ def get_signal(symbol, ticker):
             "price": price,
             "ema": float(ema50),
             "direction": direction,
-            "confidence": confidence,
+            "conf": conf,
             "entry": price,
             "sl": sl,
             "tp": tp,
             "p_sl": p_sl,
             "p_tp": p_tp,
-            "reason": "Trend down + below EMA50" if direction == "SELL" else "Trend up + above EMA50" if direction == "BUY" else "Price at EMA50 - Wait"
+            "reason": reason,
         }
-    except Exception as e:
-        return {"symbol": symbol, "error": str(e)}
+    except Exception:
+        return {"symbol": symbol, "error": "err"}
  
-# ===== PART 1 - SNIPER CONTROL =====
-if page == "🎯 1. SNIPER CONTROL":
-    st.markdown('<div class="robot-box"><div class="robot-title">FOREX<br>SNIPER</div><div class="robot-sub">PRECISE ENTRIES • LOW RISK MODE • VERSION 2.0</div></div>', unsafe_allow_html=True)
-    st.write("")
+# PART 1 - SNIPER CONTROL
+if page == "1. SNIPER CONTROL":
+    st.markdown(
+        '<div class="robot-box">'
+        '<div class="robot-title">FOREX<br>SNIPER</div>'
+        '<div class="robot-sub">'
+        'PRECISE ENTRIES - LOW RISK - V2.0'
+        '</div></div>',
+        unsafe_allow_html=True
+    )
     st.write("")
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("▶️ START SNIPER", use_container_width=True):
+        if st.button("START SNIPER", use_container_width=True):
             st.session_state.robot_on = True
             st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
             st.rerun()
     with c2:
-        if st.button("⏹️ STOP SNIPER", use_container_width=True):
+        if st.button("STOP SNIPER", use_container_width=True):
             st.session_state.robot_on = False
             st.rerun()
     st.write("")
-    status = "🟢 RUNNING" if st.session_state.robot_on else "🔴 STOPPED"
-    st.markdown(f'<div class="metric-box"><h3 style="text-align:center;">STATUS: {status}</h3><p style="text-align:center; color:#9ca3af;">Last Scan: {st.session_state.last_scan}</p></div>', unsafe_allow_html=True)
+    status = "RUNNING" if st.session_state.robot_on else "STOPPED"
+    st.markdown(
+        f'<div class="metric-box"><h3>STATUS: {status}</h3>'
+        f'<p>Last: {st.session_state.last_scan}</p></div>',
+        unsafe_allow_html=True
+    )
     st.write("")
     m1, m2, m3 = st.columns(3)
     with m1:
-        st.markdown('<div class="metric-box"><p>UPTIME</p><h2>12h 34m</h2></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="metric-box"><p>UPTIME</p><h2>12h 34m</h2></div>',
+            unsafe_allow_html=True
+        )
     with m2:
-        st.markdown('<div class="metric-box"><p>PAIRS SCANNED</p><h2>20 Pairs</h2></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="metric-box"><p>PAIRS</p><h2>20 Pairs</h2></div>',
+            unsafe_allow_html=True
+        )
     with m3:
-        st.markdown('<div class="metric-box"><p>MODE</p><h2>EMA50</h2></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="metric-box"><p>MODE</p><h2>EMA50</h2></div>',
+            unsafe_allow_html=True
+        )
     st.write("")
-    st.info("✅ Sniper scans 20 pairs including Gold + BTC. Go to Dashboard to see signals.")
-    st.warning("⚠️ KILL SWITCH ARMED • SAFE MODE OFF • Don't trade 30 mins before/after red news. Check Calendar page.")
-    if st.session_state.robot_on:
-        if st.button("🔄 SCAN NOW → GO TO DASHBOARD", use_container_width=True):
-            st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
+    st.info("Sniper scans 20 pairs. Go to Dashboard.")
+    st.warning("Check Calendar before trading.")
  
-# ===== PART 2 - DASHBOARD - ALL 20 WITH SL/TP =====
-if page == "📊 2. DASHBOARD":
-    st.title("📊 LIVE SNIPER SIGNALS")
-    col_a, col_b = st.columns([3, 1])
-    with col_a:
-        st.write(f"Sniper: {'🟢 RUNNING' if st.session_state.robot_on else '🔴 STOPPED'} | Last Scan: {st.session_state.last_scan}")
-    with col_b:
-        if st.button("🔄 REFRESH"):
-            st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
-            st.rerun()
+# PART 2 - DASHBOARD - ALL 20 WITH SL/TP
+if page == "2. DASHBOARD":
+    st.title("LIVE SNIPER SIGNALS")
+    st.write(f"Last: {st.session_state.last_scan}")
+    if st.button("REFRESH"):
+        st.session_state.last_scan = datetime.datetime.now().strftime("%H:%M:%S")
+        st.rerun()
     if not st.session_state.robot_on:
-        st.warning("Sniper is STOPPED. Go to Sniper
+        st.warning("Sniper STOPPED. Go to Page 1.")
+    for symbol, ticker in SYMBOLS.items():
+        data = get_signal(symbol, ticker)
+        if data is None or "error" in data:
+            st.markdown(
+                f'<div class="signal-card"><b>{symbol}</b>'
+                ' - Waiting...</div>',
+                unsafe_allow_html=True
+            )
+            continue
+        is_sell = data["direction"] == "SELL"
+        is_buy = data["direction"] == "BUY"
+        if is_sell:
+            card = "sell-card"
+            color = "#ef4444"
+            arrow = "DOWN"
+        elif is_buy:
+            card = "buy-card"
+            color = "#22c55e"
+            arrow = "UP"
+        else:
+            card = "signal-card"
+            color = "#f59e0b"
+            arrow = "WAIT"
+        st.markdown(
+            f'<div class="signal-card {card}">'
+            f'<b style="font-size:22px;">{data["symbol"]} - {data["direction"]}</b>'
+            f'<p>Price: <b>{data["price"]:.5f}</b></p>'
+            f'<p>Confidence: <b>{data["conf"]}%</b></p>'
+            f'<p>Reason: {data["reason"]}</p>'
+            f'<p>Entry: <b>{data["entry"]:.5f}</b></p>'
+            f'<p>SL: <b>{data["sl"]:.5f}</b>'
+            f' - {data["p_sl"]:.0f} pips</p>'
+            f'<p>TP: <b>{data["tp"]:.5f}</b>'
+            f' - {data["p_tp"]:.0f} pips</p>'
+            f'<p>EMA50: {data["ema"]:.5f}</p>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    st.markdown("---")
+    st.markdown("Risk: 0.5% | SL: 4 pips | TP: 7 pips")
+ 
+# PART 3 - CALENDAR - FIXED
+if page == "3. ECONOMIC CALENDAR":
+    st.title("ECONOMIC CALENDAR")
+    st.markdown("Do not trade 30 mins before/after red news.")
+    st.markdown("Timezone: South Africa (GMT+2)")
+    st.write("")
+    st.success("Opens in new tab.")
+    st.link_button(
+        "OPEN FOREX FACTORY",
+        "https://www.forexfactory.com/calendar",
+        use_container_width=True
+    )
+    st.link_button(
+        "OPEN INVESTING.COM",
+        "https://www.investing.com/economic-calendar/",
+        use_container_width=True
+    )
+    st.link_button(
+        "OPEN MYFXBOOK",
+        "https://www.myfxbook.com/forex-economic-calendar",
+        use_container_width=True
+    )
+    st.write("")
+    st.markdown("### HIGH IMPACT RULE")
+    st.markdown("14:30 - USD News - Stop USD pairs")
+    st.markdown("16:00 - USD/EUR News - Stop EURUSD")
+    st.markdown("10:00 - EUR News - Stop EUR pairs")
+    st.warning("Red news = STOP SNIPER on Page 1.")
