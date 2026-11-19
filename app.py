@@ -161,10 +161,10 @@ def show_dashboard():
                 st.markdown(f'<span class="entry">Entry: {entry:,.5f}</span>', unsafe_allow_html=True)
                 cc1, cc2 = st.columns(2)
                 with cc1:
-                                    st.markdown("SL<br><span class=\"sl\">" + format(sl, ",.5f") + "</span><br>" + format(p_sl, ".0f") + " pips to SL", unsafe_allow_html=True)
+                                    st.markdown("SL<br><span class=\"sl\">" + format(sl, ",.5f") + "</span><br>" + format(p_sl * 10000, ".0f") + " pips to SL", unsafe_allow_html=True)
  
                 with cc2:
-                                    st.markdown("TP<br><span class=\"tp\">" + format(tp, ",.5f") + "</span><br>" + format(p_tp, ".0f") + " pips to TP", unsafe_allow_html=True)
+                                    st.markdown("TP<br><span class=\"tp\">" + format(tp, ",.5f") + "</span><br>" + format(p_tp * 10000, ".0f") + " pips to TP", unsafe_allow_html=True)
 if "page" not in st.session_state:
  st.session_state.page = "Dashboard"
 if "started" not in st.session_state:
