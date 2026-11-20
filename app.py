@@ -144,12 +144,12 @@ def get_signal(symbol, ticker):
     try:
         df = yf.download(
             ticker,
-            period="1d",
+            period="5d",
             interval="15m",
             progress=False,
             auto_adjust=True
         )
-        if df is None or len(df) < 55:
+        if df is None or len(df) < 51:
             return None
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
